@@ -87,3 +87,275 @@ FOREIGN KEY (p#) REFERENCES partes (p#);
 ALTER TABLE enviosproyectos
 ADD CONSTRAINT fk_enviosproyectos_proyectos
 FOREIGN KEY (j#) REFERENCES proyectos (j#);
+
+-- Creado de procedimientos almacenados o funciones
+
+-- Obtenga el color y ciudad para las partes que no son de París, con un peso mayor de diez.
+
+CREATE OR REPLACE PROCEDURE obtener_partes_color_ciudad IS
+BEGIN
+    FOR rec in (
+        SELECT color, city FROM partes WHERE city <>  'Paris' AND weight > 10
+    ) LOOP
+    
+        DBMS_OUTPUT.PUT_LINE('Color: ' ||rec.color||', Ciudad: '||rec.city);
+    END LOOP;
+END;
+/
+
+BEGIN
+  obtener_partes_color_ciudad;
+END;
+/
+
+-- 4.1.2 Para todas las partes, obtenga el número de parte y el peso de dichas partes en gramos.
+
+CREATE OR REPLACE PROCEDURE p_obtener_numparte_peso IS
+BEGIN
+    FOR rec in (SELECT p#, weight FROM partes) LOOP
+        DBMS_OUTPUT.PUT_LINE('N°: '||rec.p#||', peso (gramos): '||rec.weight*453.592);
+    END LOOP;
+END;
+/
+
+BEGIN 
+    p_obtener_numparte_peso;
+END;
+/
+
+-- 4.1.3 Obtenga el detalle completo de todos los proveedores.
+
+CREATE OR REPLACE PROCEDURE p_obtener_detalle_proveedores IS
+BEGIN
+    FOR rec in (SELECT * FROM proveedores ORDER BY s#) LOOP
+        DBMS_OUTPUT.PUT_LINE('Id: '||rec.s#||', Nombre: '||rec.sname||', Status: '||rec.status||', Ciudad: '||rec.city);    
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_obtener_detalle_proveedores;
+END;
+/
+
+-- 4.1.4 Obtenga todas las combinaciones de proveedores y partes para aquellos proveedores y partes co-localizados.
+
+CREATE OR REPLACE PROCEDURE p_obtener_combinaciones IS
+BEGIN
+    FOR rec in (
+        SELECT e.s#, e.p#, p.city FROM envios e
+        JOIN partes p ON p.p# = e.p#
+        JOIN proveedores pr ON pr.s# = e.s#
+        WHERE pr.city = p.city
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID Proveedor: '||rec.s#||', ID Parte: '||rec.p#||', Ciudad compartida:'|| rec.city);
+    END LOOP;
+END;
+/
+
+BEGIN
+   p_obtener_combinaciones;
+END;
+/
+
+-- 4.1.5 Obtenga todos los pares de nombres de ciudades de tal forma que el proveedor 
+-- localizado en la primera ciudad del par abastece una parte almacenada en la segunda ciudad del par.
+
+CREATE OR REPLACE PROCEDURE p_pares_ciudades_abastecimiento IS
+BEGIN
+  FOR rec IN (
+    SELECT DISTINCT s.city AS ciudad_proveedor, p.city AS ciudad_parte
+    FROM envios e
+    JOIN proveedores s ON e.s# = s.s#
+    JOIN partes p ON e.p# = p.p#
+  ) LOOP
+    DBMS_OUTPUT.PUT_LINE('Proveedor en: ' || rec.ciudad_proveedor || ', Parte almacenada en: ' || rec.ciudad_parte);
+  END LOOP;
+END;
+/
+BEGIN
+  p_pares_ciudades_abastecimiento;
+END;
+/
+
+-- 4.1.6 Obtenga todos los pares de número de proveedor tales que los dos proveedores
+-- del par estén co-localizados.
+
+CREATE OR REPLACE PROCEDURE p_pares_proveedores_colocalizados IS
+BEGIN
+    FOR rec in (
+        SELECT
+            p1.s# as proveedor_1,
+            p2.s# as proveedor_2,
+            p1.city
+        FROM
+            proveedores p1
+        JOIN
+            proveedores p2
+        ON 
+            p1.city = p2.city
+            AND p1.s# > p2.s#
+        ORDER BY p1.city
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID Proveedor 1: '||rec.proveedor_1||', ID Proveedor 2: '||rec.proveedor_2||', Ciudad: '||rec.city);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_pares_proveedores_colocalizados;
+END;
+/
+
+-- 4.1.7 Obtenga el número total de proveedores.
+CREATE OR REPLACE FUNCTION f_total_proveedores 
+RETURN NUMBER IS
+total_proveedores NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO total_proveedores FROM proveedores;
+    RETURN total_proveedores;
+END;
+/
+
+DECLARE
+    total NUMBER;
+BEGIN
+    total := f_total_proveedores;
+    DBMS_OUTPUT.PUT_LINE('Total de proveedores: '||total);
+END;
+/
+
+-- 4.1.8 Obtenga la cantidad mínima y la cantidad máxima para la parte P2.
+CREATE OR REPLACE PROCEDURE p_min_max_cantidad_parte (
+    id_parte IN VARCHAR2,
+    min_qty OUT NUMBER,
+    max_qty OUT NUMBER
+) IS
+BEGIN
+    SELECT min(qty), max(qty) INTO min_qty, max_qty FROM envios WHERE p# = id_parte;
+END;
+/
+
+DECLARE
+    v_id_parte VARCHAR2(10) := '&id_parte';
+    v_min_qty NUMBER;
+    v_max_qty NUMBER;
+BEGIN
+    p_min_max_cantidad_parte(v_id_parte, v_min_qty, v_max_qty);
+    DBMS_OUTPUT.PUT_LINE('Cantidad minima de '||v_id_parte||': '||v_min_qty);
+    DBMS_OUTPUT.PUT_LINE('Cantidad maxima de '||v_id_parte||': '||v_max_qty);
+END;
+/
+
+-- 4.1.9 Para cada parte abastecida, obtenga el número de parte y el total despachado.
+CREATE OR REPLACE PROCEDURE p_obtener_total_por_parte IS
+BEGIN
+    FOR rec in (SELECT p#, SUM(qty) as total_cantidad FROM envios GROUP BY p#) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID parte: '||rec.p#||', Total despachado: '||rec.total_cantidad);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_obtener_total_por_parte;
+END;
+/
+
+-- 4.1.10 Obtenga el número de parte para todas las partes abastecidas por más de
+-- un proveedor.
+
+CREATE OR REPLACE PROCEDURE p_obtener_parte_abastecida IS
+BEGIN
+    FOR rec in (
+        SELECT p#, COUNT(s#) as cantidad_proveedores
+        FROM envios
+        GROUP BY p#
+        HAVING COUNT(DISTINCT s#) > 1
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID parte: '||rec.p#||', # de proveedores: '||rec.cantidad_proveedores);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_obtener_parte_abastecida;
+END;
+/
+
+-- 4.1.11 Obtenga el nombre de proveedor para todos los proveedores que abastecen
+-- la parte P2.
+
+SELECT sname FROM proveedores pr
+JOIN envios e ON e.s#=pr.s#
+WHERE e.p# = 'P2';
+
+CREATE OR REPLACE PROCEDURE p_obtener_nombre_que_abastecen_parte (
+    id_parte IN VARCHAR2
+) IS 
+BEGIN
+    FOR rec in (
+        SELECT sname FROM proveedores pr
+        JOIN envios e ON e.s# = pr.s#
+        WHERE e.p# = id_parte
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Nombre: '||rec.sname);
+    END LOOP;
+END;
+/
+
+DECLARE
+    v_id_parte VARCHAR2(10):= '&id_parte';
+BEGIN
+    p_obtener_nombre_que_abastecen_parte(v_id_parte);
+END;
+/
+
+-- 4.1.12 Obtenga el nombre de proveedor de quienes abastecen por lo menos una
+-- parte.
+
+SELECT pr.sname, COUNT(p#) as numero_de_abastecimiento FROM proveedores pr
+JOIN envios e ON e.s# = pr.s#
+GROUP BY pr.sname HAVING COUNT(p#) >= 1;
+
+CREATE OR REPLACE PROCEDURE p_proveedores_multiples_partes IS
+BEGIN
+    FOR rec in (
+        SELECT
+            pr.sname, COUNT(p#) as numero_de_abastecimiento
+        FROM proveedores pr
+        JOIN envios e ON e.s# = pr.s#
+        GROUP BY pr.sname HAVING COUNT(p#) >=1
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Nombre: '||rec.sname||', # de abastecimientos: '||rec.numero_de_abastecimiento);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_proveedores_multiples_partes;
+END;
+/
+
+-- 4.1.13 Obtenga el número de proveedor para los proveedores con estado menor
+-- que el máximo valor de estado en la tabla S.
+
+SELECT s# FROM proveedores WHERE status < (SELECT MAX(status) FROM proveedores);
+
+CREATE OR REPLACE PROCEDURE p_obtener_proveedor_estado_menor 
+IS
+    v_max_status proveedores.status%TYPE;
+BEGIN
+    SELECT MAX(status) INTO v_max_status FROM proveedores;
+    
+    DBMS_OUTPUT.PUT_LINE('Max status: '||v_max_status);
+
+    FOR rec in (SELECT s#, sname, status FROM proveedores WHERE status < v_max_status) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID: '||rec.s#||', Nombre: '||rec.sname||'Status: '||rec.status);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_obtener_proveedor_estado_menor;
+END;
+/
