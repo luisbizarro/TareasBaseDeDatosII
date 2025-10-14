@@ -359,3 +359,121 @@ BEGIN
     p_obtener_proveedor_estado_menor;
 END;
 /
+
+-- 4.1.14 Obtenga el nombre de proveedor para los proveedores que abastecen la
+-- parte P2 (aplicar EXISTS en su solución).
+
+CREATE OR REPLACE PROCEDURE p_proveedores_que_abastecen_p2 IS
+BEGIN
+    FOR rec IN (
+        SELECT pr.sname
+        FROM proveedores pr
+        WHERE EXISTS (
+            SELECT 1
+            FROM envios e
+            WHERE e.s# = pr.s#
+              AND e.p# = 'P2'
+        )
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Proveedor: ' || rec.sname);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_proveedores_que_abastecen_p2;
+END;
+/
+
+-- 4.1.15 Obtenga el nombre de proveedor para los proveedores que no abastecen la
+-- parte P2.
+
+CREATE OR REPLACE PROCEDURE p_proveedores_que_no_abastecen_parte (
+    p_parte_id IN VARCHAR2
+) IS
+BEGIN
+    FOR rec IN (
+        SELECT pr.sname
+        FROM proveedores pr
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM envios e
+            WHERE e.s# = pr.s#
+              AND e.p# = p_parte_id
+        )
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Proveedor: ' || rec.sname);
+    END LOOP;
+END;
+/
+
+BEGIN
+    p_proveedores_que_no_abastecen_parte('P2');
+END;
+/
+
+-- 4.1.16 Obtenga el nombre de proveedor para los proveedores que abastecen todas
+-- las partes.
+
+SELECT pr.sname FROM proveedores pr
+JOIN envios e ON e.s# = pr.s#
+GROUP BY pr.sname HAVING COUNT(e.p#) = (SELECT COUNT(*) FROM partes);
+
+CREATE OR REPLACE PROCEDURE p_proveedores_todas_partes IS
+    v_total_partes NUMBER;
+BEGIN
+    
+    SELECT COUNT(*) INTO v_total_partes FROM partes;
+
+    FOR rec IN (
+        SELECT pr.sname 
+        FROM proveedores pr
+        JOIN envios e ON e.s# = pr.s#
+        GROUP BY pr.sname
+        HAVING COUNT(e.p#) = v_total_partes
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('Proveedor: ' || rec.sname);
+    END LOOP;
+
+    IF SQL%ROWCOUNT = 0 THEN
+        DBMS_OUTPUT.PUT_LINE('Ningún proveedor abastece todas las partes.');
+    END IF;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No hay datos en las tablas proveedores o partes.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END;
+/
+
+EXEC p_proveedores_todas_partes;
+
+-- 4.1.17 Obtenga el número de parte para todas las partes que pesan más de 16 libras
+-- ó son abastecidas por el proveedor S2, ó cumplen con ambos criterios.
+
+SELECT pa.p# FROM partes pa
+JOIN envios e ON e.p# = pa.p#
+WHERE pa.weight > 16 OR e.s# = 'S2';
+
+CREATE OR REPLACE PROCEDURE p_obtener_num_parte_condicion
+IS 
+    v_peso partes.weight%type := 16;
+    v_proveedor proveedores.s#%type := 'P2';
+BEGIN
+    FOR rec IN (
+        SELECT DISTINCT pa.p# FROM partes pa
+        JOIN envios e ON e.p# = pa.p#
+        WHERE pa.weight > v_peso OR e.s# = v_proveedor
+    ) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID Parte: '||rec.p#);
+    END LOOP;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No hay datos en las tablas proveedores o partes.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END;
+/
+
+EXEC p_obtener_num_parte_condicion();
