@@ -153,3 +153,73 @@ BEGIN
     COMMIT;
 END;
 /
+
+-- 2
+UPDATE employees
+SET salary = salary + 600
+WHERE employee_id = 103;
+ROLLBACK;
+
+SELECT * FROM v$lock WHERE block = 1;
+
+
+-- 3 
+DECLARE
+    v_employee_id NUMBER := 101;
+    v_new_dept_id NUMBER := 20;
+    v_old_dept_id NUMBER;
+    v_job_id VARCHAR2(10);
+    v_start_date DATE := SYSDATE;
+BEGIN
+    --Obtener datos actuales del empleado
+    SELECT department_id, job_id INTO v_old_dept_id, v_job_id
+    FROM employees
+    WHERE employee_id = v_employee_id;
+    
+    -- Actualizar departamento del empleado
+    UPDATE employees
+    SET department_id = v_new_dept_id
+    WHERE employee_id = v_employee_id;
+    
+    -- Insertar registro en job_history
+    INSERT INTO job_history (employee_id, start_date, end_date, job_id, department_id)
+    VALUES (v_employee_id, v_start_date, v_start_date, v_job_id, v_old_dept_id);
+    
+    -- Confirmar cambios
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Transferencia realizada correctamente');
+
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error en la transferencia: '|| SQLERRM);
+END;
+/   
+
+-- 4
+DECLARE
+BEGIN
+    -- Aumentar 8% el salario empleados departamento 100
+    UPDATE employees
+    SET salary = salary * 1.08
+    WHERE department_id = 100;
+    
+    SAVEPOINT A;
+    
+    -- Aumentar 5% el salario empleados departamento 80
+    UPDATE employees
+    SET salary = salary * 1.05
+    WHERE department_id = 80;
+    
+    SAVEPOINT B;
+    
+    -- Eliminar empleados departamento 50
+    DELETE FROM employees
+    WHERE department_id = 50;
+    
+    -- Revertir cambios hasta SAVEPOINT B (revierte DELETE)
+    ROLLBACK TO SAVEPOINT B;
+    
+    COMMIT;
+END;
+/
